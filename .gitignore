@@ -1,0 +1,13 @@
+**/bin/
+**/obj/
+output/
+.env
+.env.*
+!.env.example
+*.credential
+*.credential.*
+.desktop-token.*
+.test-data/
+fechamentos.json*
+*.user
+.vs/
