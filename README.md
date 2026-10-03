@@ -1,3 +1,5 @@
+> **Tenant obrigatório:** configure `FLUXO_TENANT_ID` ou preencha Tenant e clique em Aplicar tenant. Todas as requisições incluem `X-Tenant-Id`. Veja [Tenants](TENANTS.md). Backend com tenant ainda aguarda ativação em produção.
+
 # Fluxo de Caixa - simulador desktop
 
 Aplicacao Windows Forms .NET 10 para fechamento com fila persistida, consulta, edicao e exclusao via API externa. O POST mantem Data, FormaPagamento e Valor, sem GUID/versao exigidos. O servidor gera a identidade. PUT/DELETE usam UUID permanente e controle de versao. Consulte [Contrato atual da API](CONTRATO_API.md), incluindo migração, JSON de todas as rotas e conflitos.

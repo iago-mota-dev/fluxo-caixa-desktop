@@ -4,9 +4,11 @@ using System.Text.Json;
 
 namespace FluxoCaixa.Core;
 
-public sealed class SyncService(HttpClient http, OutboxStore store, Uri baseUri, Func<string> getToken)
+public sealed class SyncService(HttpClient http, OutboxStore store, Uri baseUri, Func<string> getToken, string tenantId)
 {
  private readonly SemaphoreSlim gate=new(1,1);
+ private readonly string tenant=TenantId(tenantId);
+ private static string TenantId(string value)=>value is not null && System.Text.RegularExpressions.Regex.IsMatch(value,"^[A-Za-z0-9_-]{1,128}$")?value:throw new ArgumentException("Configure X-Tenant-Id (1 a 128 caracteres: letras, numeros, _ ou -).");
  public async Task<int> SyncPendingAsync(bool manual=false,CancellationToken cancellation=default)
  {
   if(!await gate.WaitAsync(0,cancellation)) return 0;
@@ -24,7 +26,7 @@ public sealed class SyncService(HttpClient http, OutboxStore store, Uri baseUri,
     try
     {
      using var request=new HttpRequestMessage(HttpMethod.Post,new Uri(baseUri,"/api/fechamentos"));
-     request.Headers.Add("X-Desktop-Token",token); request.Headers.Add("Idempotency-Key",entry.OperationId); request.Content=JsonContent.Create(entry.Payload.Select(p=>new {p.Data,p.FormaPagamento,p.Valor}).ToArray(),options:new JsonSerializerOptions());
+     request.Headers.Add("X-Tenant-Id",tenant); request.Headers.Add("X-Desktop-Token",token); request.Headers.Add("Idempotency-Key",entry.OperationId); request.Content=JsonContent.Create(entry.Payload.Select(p=>new {p.Data,p.FormaPagamento,p.Valor}).ToArray(),options:new JsonSerializerOptions());
      using var response=await http.SendAsync(request,cancellation);
      if(response.StatusCode!=HttpStatusCode.OK)
      {
@@ -64,7 +66,7 @@ public sealed class SyncService(HttpClient http, OutboxStore store, Uri baseUri,
    var token=getToken().Trim();
    if(token.Length<32)throw new InvalidOperationException("Configure a credencial deste ambiente.");
    using var request=new HttpRequestMessage(replacement is null?HttpMethod.Delete:HttpMethod.Put,new Uri(baseUri,$"/api/fechamentos/{current.Id}"));
-   request.Headers.Add("X-Desktop-Token",token);
+   request.Headers.Add("X-Tenant-Id",tenant); request.Headers.Add("X-Desktop-Token",token);
    request.Headers.Add("Idempotency-Key",Guid.NewGuid().ToString());
    var changed=DateTimeOffset.UtcNow.ToString("yyyy-MM-dd'T'HH:mm:ss.fff'Z'");
    request.Content=replacement is null?JsonContent.Create(new{Versao=current.Versao,AlteradoEmCliente=changed},options:new JsonSerializerOptions())
@@ -82,7 +84,7 @@ public sealed class SyncService(HttpClient http, OutboxStore store, Uri baseUri,
  public async Task<string> QueryAsync(string day,CancellationToken cancellation=default)
  {
   using var req=new HttpRequestMessage(HttpMethod.Get,new Uri(baseUri,$"/api/fechamentos?dataInicio={day}&dataFim={day}"));
-  req.Headers.Add("X-Desktop-Token",getToken());
+  req.Headers.Add("X-Tenant-Id",tenant); req.Headers.Add("X-Desktop-Token",getToken());
   using var response=await http.SendAsync(req,cancellation);
   if(!response.IsSuccessStatusCode) throw new HttpRequestException($"Consulta recusada: HTTP {(int)response.StatusCode}.");
   var json=await response.Content.ReadAsStringAsync(cancellation);

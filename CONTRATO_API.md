@@ -1,3 +1,5 @@
+> **Tenant obrigatório (nova versão):** enviar `X-Tenant-Id: TENANT_EXEMPLO` em todos os GET, POST, PUT e DELETE, junto da autenticação. O payload permanece igual. Dados existentes serão atribuídos automaticamente ao tenant original pela migration 0006. Veja [Tenants](TENANTS.md). Esta alteração está validada localmente e aguarda ativação em produção.
+
 # Contrato da API: POST original e edicoes versionadas
 
 Atualizado em 03/10/2026. Este e o contrato atual publicado, apos a restauracao do POST original. Substitui a documentacao inicial v2 que exigia Id e Versao em todos os itens do POST.
