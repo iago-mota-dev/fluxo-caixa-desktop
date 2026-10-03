@@ -10,10 +10,10 @@ internal static class Program
   System.Globalization.CultureInfo.CurrentCulture=System.Globalization.CultureInfo.GetCultureInfo("pt-BR");
   try
   {
-   if(args.Length==2 && args[0]=="--preview")
+   if(args.Length>=2 && args[0]=="--preview")
    {
     using var form=new MainForm();form.StartPosition=FormStartPosition.Manual;form.Location=new Point(-3000,-3000);
-    form.Show();Application.DoEvents();
+    form.Show();if(args.Length>2)form.SelectPreviewTab(int.Parse(args[2]));Application.DoEvents();
     using var bitmap=new Bitmap(form.Width,form.Height);form.DrawToBitmap(bitmap,new Rectangle(Point.Empty,form.Size));
     bitmap.Save(Path.GetFullPath(args[1]),System.Drawing.Imaging.ImageFormat.Png);return;
    }

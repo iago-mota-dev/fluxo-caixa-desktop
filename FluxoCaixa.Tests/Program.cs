@@ -66,6 +66,25 @@ try{
   var store=new OutboxStore(Path.Combine(root,"invalid.json"));store.Close(Payload());using var http=new HttpClient(new Stub(_=>Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK){Content=JsonContent.Create(new{Sucesso=true})})));
   await new SyncService(http,store,new Uri("http://localhost"),()=>new string('a',64),"tenant-test").SyncPendingAsync(true);Assert(store.Snapshot().Single().Status=="Pending","exige ids e versoes");
  });
+ await Run("consulta de periodo completa: janelas de 90 dias, tenant e cache vazio",async()=>{
+  var store=new OutboxStore(Path.Combine(root,"period.json"));var stale=new Grupo("pix",99,"2026-01-02T12:00:00-03:00",Guid.NewGuid().ToString(),1);store.Remember("2026-01-02",[stale]);int calls=0;
+  using var http=new HttpClient(new Stub(req=>{
+   Assert(req.Headers.GetValues("X-Tenant-Id").Single()=="tenant-test","tenant no GET");
+   var expected=calls++==0?"dataInicio=2026-01-01&dataFim=2026-03-31&limit=90":"dataInicio=2026-04-01&dataFim=2026-04-01&limit=90";
+   Assert(req.RequestUri!.Query=="?"+expected,"janelas inclusivas sem lacunas e limit explicito");
+   var day=calls==1?"2026-01-01":"2026-04-01";
+   var groups=new[]{new FormaTotal("pix",10,Guid.NewGuid().ToString(),1,day+"T12:00:00-03:00"),new FormaTotal("pix",20,Guid.NewGuid().ToString(),2,day+"T12:00:00-03:00")};
+   return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK){Content=JsonContent.Create(new[]{new DiaTotal(day,30,groups)},options:new JsonSerializerOptions())});
+  }));var sync=new SyncService(http,store,new Uri("http://localhost"),()=>new string('a',64),"tenant-test");
+  var days=await sync.QueryPeriodAsync("2026-01-01","2026-04-01");Assert(calls==2 && days.Sum(d=>d.Total)==60,"todos os lotes consultados");Assert(days[0].Data=="2026-04-01" && store.Known("2026-01-01").Length==2,"duplicatas de forma mantidas e dias ordenados");Assert(store.Known("2026-01-02").Length==0,"dia vazio limpa cache antigo");
+  try{await sync.QueryPeriodAsync("2026-04-02","2026-04-01");throw new Exception("periodo invertido deveria falhar");}catch(ArgumentException){}Assert(calls==2,"periodo invalido nao usa rede");
+ });
+ await Run("falha em consulta longa nao confirma cache parcial",async()=>{
+  var store=new OutboxStore(Path.Combine(root,"partial-query.json"));int calls=0;
+  using var http=new HttpClient(new Stub(req=>Task.FromResult(++calls==1?new HttpResponseMessage(HttpStatusCode.OK){Content=JsonContent.Create(new[]{new DiaTotal("2026-01-01",5,[new FormaTotal("pix",5,Guid.NewGuid().ToString(),1,"2026-01-01T12:00:00-03:00")])},options:new JsonSerializerOptions())}:new HttpResponseMessage(HttpStatusCode.ServiceUnavailable))));
+  var sync=new SyncService(http,store,new Uri("http://localhost"),()=>new string('a',64),"tenant-test");
+  try{await sync.QueryPeriodAsync("2026-01-01","2026-04-01");throw new Exception("falha deve ser propagada");}catch(HttpRequestException){}Assert(calls==2 && store.Known("2026-01-01").Length==0,"nao gravar cache de resultado incompleto");
+ });
  if(args.Length>0 && args[0]=="--integration")await Run("integracao real: POST original preserva registros e DELETE exige versao",async()=>{
   var uri=new Uri(args[1]);Assert(uri.IsLoopback,"somente D1 local");var token=File.ReadAllText(args[2]).Trim();using var http=new HttpClient();var integrationTenant="tenant-test-"+Guid.NewGuid().ToString("N");var store=new OutboxStore(Path.Combine(root,"real.json"));var sync=new SyncService(http,store,uri,()=>token,integrationTenant);
   store.Close(Payload(77.29m));Assert(await sync.SyncPendingAsync(true)==1,"criar");await sync.QueryAsync("2026-10-03");var observed=store.Known("2026-10-03").Single(g=>g.FormaPagamento=="pix");

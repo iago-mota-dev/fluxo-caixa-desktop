@@ -1,3 +1,17 @@
+## Interface e consulta por periodo
+
+A interface foi reorganizada em tres abas:
+
+- **Fechamento e sincronizacao:** data/hora, valores por forma, salvar localmente, enviar, reenviar pendencias e revisar fila.
+- **Consulta e edicao:** data inicial e final inclusivas, tabela de lancamentos, total do periodo e detalhes do item selecionado. Editar/excluir usa o UUID e a versao desse item, incluindo alteracao de data, forma, valor e fuso.
+- **Configuracao:** ambiente, URL, tenant e credencial protegida pelo Windows.
+
+Para consultar, configure tenant e token, abra Consulta e edicao, escolha De/Ate e clique em Consultar periodo. Cada lancamento aparece separadamente mesmo quando existem duas ocorrencias da mesma forma no dia. Selecione uma linha para editar ou excluir. A consulta permanece independente da data de fechamento.
+
+Periodos longos sao divididos automaticamente em janelas de ate 90 dias corridos, usando dataInicio/dataFim e limit=90. Todos os resultados sao reunidos antes de exibir o total. Se uma consulta falhar, nenhum resultado parcial e apresentado. Depois de editar/excluir, o periodo e consultado novamente; um registro movido para fora do filtro deixa a lista.
+
+Edicoes usam a versao observada na consulta. HTTP 409 exige nova consulta e revisao; nao ha sobrescrita automatica. Um erro ao atualizar a lista depois de uma alteracao confirmada nao implica repetir a gravacao.
+
 > **Tenant obrigatório:** configure `FLUXO_TENANT_ID` ou preencha Tenant e clique em Aplicar tenant. Todas as requisições incluem `X-Tenant-Id`. Veja [Tenants](TENANTS.md). Backend com tenant ativado em produção em 03/10/2026.
 
 # Fluxo de Caixa - simulador desktop
@@ -31,7 +45,7 @@ O POST nao sobrescreve um valor diferente ja salvo na mesma data/forma: preserva
 - Fechar e enviar: persiste payload original e chave opcional de operacao; guarda UUIDs/versoes devolvidos pelo servidor. Valores diferentes na mesma data/forma sao preservados separadamente e somados no total.
 - Salvar sem enviar: salva Pending e pausa envio automatico.
 - Reenviar pendencias: repete payload e chave originais.
-- Consultar dia: carrega o estado remoto sem renovar pendencias.
+- Consultar periodo: carrega todos os lancamentos entre as datas escolhidas sem renovar pendencias.
 - Editar/excluir: usa UUID e versao consultados antes do dialogo; conflito nao sobrescreve. A lista distingue registros pela forma, valor e ID.
 - Revisar conflito / fila antiga: compara estado remoto e intencao local. Somente confirmacao explicita cria nova revisao com outra chave.
 

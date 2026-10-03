@@ -83,16 +83,37 @@ public sealed class SyncService(HttpClient http, OutboxStore store, Uri baseUri,
  }
  public async Task<string> QueryAsync(string day,CancellationToken cancellation=default)
  {
-  using var req=new HttpRequestMessage(HttpMethod.Get,new Uri(baseUri,$"/api/fechamentos?dataInicio={day}&dataFim={day}"));
-  req.Headers.Add("X-Tenant-Id",tenant); req.Headers.Add("X-Desktop-Token",getToken());
-  using var response=await http.SendAsync(req,cancellation);
-  if(!response.IsSuccessStatusCode) throw new HttpRequestException($"Consulta recusada: HTTP {(int)response.StatusCode}.");
-  var json=await response.Content.ReadAsStringAsync(cancellation);
-  var days=JsonSerializer.Deserialize<DiaTotal[]>(json)??throw new InvalidDataException("Consulta invalida");
-  var groups=days.SelectMany(d=>d.FormasPagamento).Select(r=>new Grupo(r.FormaPagamento,r.Valor,r.Data,r.Id,r.Versao)).ToArray();
-  if(groups.Any(p=>!Guid.TryParse(p.Id,out _) || p.Versao<1))throw new InvalidDataException("API sem contrato versionado.");
-  store.Remember(day,groups);
-  using var doc=JsonDocument.Parse(json);
-  return JsonSerializer.Serialize(doc.RootElement,new JsonSerializerOptions{WriteIndented=true});
+  var days=await QueryPeriodAsync(day,day,cancellation);
+  return JsonSerializer.Serialize(days,new JsonSerializerOptions{WriteIndented=true});
+ }
+ public async Task<DiaTotal[]> QueryPeriodAsync(string start,string end,CancellationToken cancellation=default)
+ {
+  if(!DateOnly.TryParseExact(start,"yyyy-MM-dd",System.Globalization.CultureInfo.InvariantCulture,System.Globalization.DateTimeStyles.None,out var first) ||
+     !DateOnly.TryParseExact(end,"yyyy-MM-dd",System.Globalization.CultureInfo.InvariantCulture,System.Globalization.DateTimeStyles.None,out var last) || first>last)
+   throw new ArgumentException("Informe um periodo valido: inicio deve ser anterior ou igual ao fim.");
+  var all=new List<DiaTotal>();
+  for(var cursor=first;;)
+  {
+   var chunkEnd=last.DayNumber-cursor.DayNumber>=89?cursor.AddDays(89):last;
+   using var req=new HttpRequestMessage(HttpMethod.Get,new Uri(baseUri,$"/api/fechamentos?dataInicio={cursor:yyyy-MM-dd}&dataFim={chunkEnd:yyyy-MM-dd}&limit=90"));
+   req.Headers.Add("X-Tenant-Id",tenant);req.Headers.Add("X-Desktop-Token",getToken());
+   using var response=await http.SendAsync(req,cancellation);
+   if(!response.IsSuccessStatusCode)throw new HttpRequestException($"Consulta recusada: HTTP {(int)response.StatusCode}. Nenhum resultado parcial foi apresentado.");
+   var json=await response.Content.ReadAsStringAsync(cancellation);
+   var days=JsonSerializer.Deserialize<DiaTotal[]>(json)??throw new InvalidDataException("Consulta invalida");
+   if(days.Any(d=>!DateOnly.TryParseExact(d.Data,"yyyy-MM-dd",out var day) || day<cursor || day>chunkEnd || d.FormasPagamento is null || d.FormasPagamento.Any(r=>!Guid.TryParse(r.Id,out _) || r.Versao<1 || !r.Data.StartsWith(d.Data+"T"))))throw new InvalidDataException("Resposta fora do periodo ou sem contrato versionado.");
+   all.AddRange(days);
+   if(chunkEnd==last)break;
+   cursor=chunkEnd.AddDays(1);
+  }
+  if(all.Select(d=>d.Data).Distinct().Count()!=all.Count)throw new InvalidDataException("Dias duplicados na consulta.");
+  var indexed=all.ToDictionary(d=>d.Data);
+  for(var day=first;;day=day.AddDays(1))
+  {
+   var key=day.ToString("yyyy-MM-dd",System.Globalization.CultureInfo.InvariantCulture);
+   store.Remember(key,indexed.TryGetValue(key,out var found)?found.FormasPagamento.Select(r=>new Grupo(r.FormaPagamento,r.Valor,r.Data,r.Id,r.Versao)).ToArray():[]);
+   if(day==last)break;
+  }
+  return all.OrderByDescending(d=>d.Data).ToArray();
  }
 }
