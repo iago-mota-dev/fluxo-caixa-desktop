@@ -6,13 +6,16 @@ namespace FluxoCaixa.Core;
 public record Grupo(
  [property: JsonPropertyName("FormaPagamento")] string FormaPagamento,
  [property: JsonPropertyName("Valor")] decimal Valor,
- [property: JsonPropertyName("Data")] string Data);
-public record FormaTotal(string FormaPagamento, decimal Valor);
+ [property: JsonPropertyName("Data")] string Data,
+ [property: JsonPropertyName("Id")] string Id = "",
+ [property: JsonPropertyName("Versao")] int Versao = 0,
+ [property: JsonPropertyName("AlteradoEmCliente")] string? AlteradoEmCliente = null);
+public record FormaTotal(string FormaPagamento, decimal Valor, string Id = "", int Versao = 0, string Data = "", string? AtualizadoEm = null, string? ExcluidoEm = null);
 public record Confirmacao(bool Sucesso, string DataCaixa, int Quantidade, FormaTotal[] FormasPagamento);
 public record DiaTotal(string Data, decimal Total, FormaTotal[] FormasPagamento);
 public record OutboxEntry(string Day, int Revision, Grupo[] Payload, string Status = "Pending",
  int Attempts = 0, string? LastError = null, DateTimeOffset? NextAttempt = null,
- DateTimeOffset? SentAt = null, bool RequiresAttention = false);
+ DateTimeOffset? SentAt = null, bool RequiresAttention = false, string? OperationId = null);
 
 public static class Contrato
 {

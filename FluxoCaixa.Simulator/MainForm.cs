@@ -35,7 +35,7 @@ public sealed class MainForm : Form
   var root=new TableLayoutPanel{Dock=DockStyle.Fill,Padding=new Padding(20),ColumnCount=1,RowCount=8};
   root.RowStyles.Add(new RowStyle(SizeType.Absolute,85)); root.RowStyles.Add(new RowStyle(SizeType.Absolute,82));
   root.RowStyles.Add(new RowStyle(SizeType.Absolute,58)); root.RowStyles.Add(new RowStyle(SizeType.Absolute,45));
-  root.RowStyles.Add(new RowStyle(SizeType.Absolute,100)); root.RowStyles.Add(new RowStyle(SizeType.Absolute,140));
+  root.RowStyles.Add(new RowStyle(SizeType.Absolute,100)); root.RowStyles.Add(new RowStyle(SizeType.Absolute,180));
   root.RowStyles.Add(new RowStyle(SizeType.Percent,55));root.RowStyles.Add(new RowStyle(SizeType.Percent,45));
   Controls.Add(root);
   var heading=new FlowLayoutPanel{Dock=DockStyle.Fill,FlowDirection=FlowDirection.TopDown,WrapContents=false};
@@ -63,6 +63,7 @@ public sealed class MainForm : Form
   actions.Controls.Add(Button("Consultar dia na API",async()=>await QueryAsync()));
   actions.Controls.Add(Button("Editar lançamento na API",async()=>await ChangeAsync(false)));
   actions.Controls.Add(Button("Excluir lançamento na API",async()=>await ChangeAsync(true)));
+  actions.Controls.Add(Button("Revisar conflito / fila antiga",async()=>await ReviewAsync()));
   actions.Controls.Add(automatic);root.Controls.Add(actions,0,5);
   var local=new GroupBox{Text="Fechamentos locais e fila de sincronização",Dock=DockStyle.Fill};
   var localRoot=new TableLayoutPanel{Dock=DockStyle.Fill,RowCount=2};localRoot.RowStyles.Add(new RowStyle(SizeType.Absolute,32));localRoot.RowStyles.Add(new RowStyle(SizeType.Percent,100));localRoot.Controls.Add(status);localRoot.Controls.Add(history,0,1);local.Controls.Add(localRoot);root.Controls.Add(local,0,6);
@@ -129,24 +130,47 @@ public sealed class MainForm : Form
  private async Task ChangeAsync(bool delete)
  {
   if(busy)return;
-  using var dialog=new Form{Text=delete?"Excluir lançamento":"Editar lançamento",Width=460,Height=360,StartPosition=FormStartPosition.CenterParent,FormBorderStyle=FormBorderStyle.FixedDialog,MaximizeBox=false,MinimizeBox=false};
-  var panel=new FlowLayoutPanel{Dock=DockStyle.Fill,Padding=new Padding(15),FlowDirection=FlowDirection.TopDown,WrapContents=false};dialog.Controls.Add(panel);
   var sourceDay=date.Value.ToString("yyyy-MM-dd",CultureInfo.InvariantCulture);
-  panel.Controls.Add(new Label{Text=$"Lançamento atual: dia {sourceDay}",AutoSize=true});
-  var source=new ComboBox{DropDownStyle=ComboBoxStyle.DropDownList,Width=390};source.Items.AddRange(Contrato.Formas);source.SelectedIndex=0;panel.Controls.Add(source);
-  var destination=new ComboBox{DropDownStyle=ComboBoxStyle.DropDownList,Width=390};destination.Items.AddRange(Contrato.Formas);destination.SelectedIndex=0;
-  var newDate=new DateTimePicker{Format=DateTimePickerFormat.Custom,CustomFormat="dd/MM/yyyy HH:mm:ss",Width=390,Value=date.Value.Date+time.Value.TimeOfDay};
-  var amount=new NumericUpDown{DecimalPlaces=2,Maximum=1000000000,ThousandsSeparator=true,Width=390};
-  source.SelectedIndexChanged+=(_,_)=>{destination.SelectedIndex=source.SelectedIndex;amount.Value=values[source.Text].Value;};
-  amount.Value=values[source.Text].Value;
-  if(!delete){panel.Controls.Add(new Label{Text="Nova forma, data/hora e valor (usa o offset da tela):",AutoSize=true});panel.Controls.Add(destination);panel.Controls.Add(newDate);panel.Controls.Add(amount);}
+  SetBusy(true);
+  try{response.Text=await sync.QueryAsync(sourceDay);}finally{SetBusy(false);}
+  var current=store.Known(sourceDay);
+  if(current.Length==0)throw new InvalidOperationException("Nao ha lancamentos ativos nesse dia.");
+  using var dialog=new Form{Text=delete?"Excluir lancamento":"Editar lancamento",Width=460,Height=390,StartPosition=FormStartPosition.CenterParent,FormBorderStyle=FormBorderStyle.FixedDialog,MaximizeBox=false,MinimizeBox=false};
+  var panel=new FlowLayoutPanel{Dock=DockStyle.Fill,Padding=new Padding(15),FlowDirection=FlowDirection.TopDown,WrapContents=false};dialog.Controls.Add(panel);
+  panel.Controls.Add(new Label{Text=$"Dia original: {sourceDay}. Alteracao usa a versao consultada.",AutoSize=true});
+  var source=new ComboBox{DropDownStyle=ComboBoxStyle.DropDownList,Width=390};source.Items.AddRange(current.Select(p=>p.FormaPagamento).ToArray());source.SelectedIndex=0;panel.Controls.Add(source);
+  var destination=new ComboBox{DropDownStyle=ComboBoxStyle.DropDownList,Width=390};destination.Items.AddRange(Contrato.Formas);
+  var newDate=new DateTimePicker{Format=DateTimePickerFormat.Custom,CustomFormat="dd/MM/yyyy HH:mm:ss",Width=390};
+  var amount=new NumericUpDown{DecimalPlaces=2,Maximum=15011998757901.65m,ThousandsSeparator=true,Width=390};
+  void Fill(){var selected=current[source.SelectedIndex];destination.SelectedItem=selected.FormaPagamento;amount.Value=selected.Valor;newDate.Value=DateTimeOffset.Parse(selected.Data,CultureInfo.InvariantCulture).DateTime;}
+  source.SelectedIndexChanged+=(_,_)=>Fill();Fill();
+  if(!delete){panel.Controls.Add(new Label{Text="Nova forma, data/hora e valor (offset da tela):",AutoSize=true});panel.Controls.Add(destination);panel.Controls.Add(newDate);panel.Controls.Add(amount);}
   panel.Controls.Add(new Label{Text=$"Ambiente: {environment.Text}",AutoSize=true,ForeColor=Color.DarkRed});
-  var confirm=new Button{Text=delete?"Confirmar exclusão":"Confirmar edição",AutoSize=true,DialogResult=DialogResult.OK};panel.Controls.Add(confirm);dialog.AcceptButton=confirm;
+  var confirm=new Button{Text=delete?"Confirmar exclusao":"Confirmar edicao",AutoSize=true,DialogResult=DialogResult.OK};panel.Controls.Add(confirm);dialog.AcceptButton=confirm;
   if(dialog.ShowDialog(this)!=DialogResult.OK)return;
   Grupo? replacement=null;
   if(!delete){var instant=new DateTimeOffset(DateTime.SpecifyKind(newDate.Value,DateTimeKind.Unspecified),TimeSpan.FromHours((double)offset.Value));replacement=new Grupo(destination.Text,amount.Value,instant.ToString("yyyy-MM-dd'T'HH:mm:sszzz",CultureInfo.InvariantCulture));}
   SetBusy(true);
-  try{response.Text=await sync.ChangeAsync(sourceDay,source.Text,replacement);RefreshHistory();status.Text=delete?"Exclusão confirmada na API.":"Edição confirmada na API. Consulte o dia de destino.";}
+  try{response.Text=await sync.ChangeAsync(current[source.SelectedIndex],replacement);RefreshHistory();status.Text=delete?"Exclusao logica confirmada.":"Edicao confirmada. Versao incrementada.";}
+  finally{SetBusy(false);}
+ }
+ private async Task ReviewAsync()
+ {
+  if(busy)return;
+  var day=date.Value.ToString("yyyy-MM-dd",CultureInfo.InvariantCulture);
+  var pending=store.Snapshot().FirstOrDefault(e=>e.Day==day && (e.Status=="Pending" || e.Status=="NeedsReview"));
+  if(pending is null)throw new InvalidOperationException("Nao ha pendencia desse dia para revisar.");
+  SetBusy(true);
+  try
+  {
+   var remote=await sync.QueryAsync(day);
+   response.Text="ESTADO ATUAL NA API:\r\n"+remote+"\r\n\r\nSUA ALTERACAO PENDENTE:\r\n"+System.Text.Json.JsonSerializer.Serialize(pending.Payload,new System.Text.Json.JsonSerializerOptions{WriteIndented=true});
+   using var review=new Form{Text="Comparar conflito",Width=800,Height=650,StartPosition=FormStartPosition.CenterParent};
+   var text=new TextBox{Multiline=true,ReadOnly=true,ScrollBars=ScrollBars.Both,Dock=DockStyle.Fill,Text=response.Text};
+   var approve=new Button{Dock=DockStyle.Bottom,Height=70,Text="Aplicar minha intencao sobre as versoes consultadas (novo envio; pode recriar formas excluidas)",DialogResult=DialogResult.OK};review.Controls.Add(text);review.Controls.Add(approve);
+   if(review.ShowDialog(this)!=DialogResult.OK)return;
+   store.Close(pending.Payload,reviewed:true);RefreshHistory();automatic.Checked=false;status.Text="Nova revisao aprovada e salva. Clique em Reenviar pendencias para enviar.";
+  }
   finally{SetBusy(false);}
  }
  private void RefreshHistory()=>history.DataSource=store.Snapshot().Select(e=>new{Dia=e.Day,Revisão=e.Revision,Total=e.Payload.Sum(x=>x.Valor).ToString("C",CultureInfo.GetCultureInfo("pt-BR")),Status=e.Status,Tentativas=e.Attempts,ÚltimaFalha=e.LastError??"",PróximoEnvio=e.NextAttempt?.ToLocalTime().ToString("HH:mm:ss")??""}).ToArray();

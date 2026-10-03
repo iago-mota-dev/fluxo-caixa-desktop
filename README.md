@@ -1,45 +1,33 @@
 # Fluxo de Caixa - simulador desktop
 
-Aplicação Windows Forms .NET 10 para simular fechamento de caixa e integração com uma API Cloudflare Worker existente. Inclui criação, consulta, edição de todos os campos e exclusão de lançamentos. O backend e o banco D1 são serviços separados.
+Aplicacao Windows Forms .NET 10 para fechamento com fila persistida, consulta, edicao e exclusao via API externa. Usa UUID permanente, controle de versao e idempotencia. Consulte [Contrato v2](CONTRATO_V2.md), incluindo migração, JSON de todas as rotas e conflitos.
 
 ## Executar
 
-Requer Windows e SDK .NET 10 para compilar. O executável publicado é autocontido.
+Requer Windows e SDK .NET 10 para compilar. O executavel publicado e autocontido.
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File ./Start-Simulator.ps1 -Build
 ```
 
-O modo inicial é Local, em http://127.0.0.1:8787. O servidor local deve ser iniciado separadamente; este repositório contém somente o desktop. Para usar o backend publicado, selecione **API publicada (banco remoto)**. Configure FLUXO_API_BASE_URL no ambiente do processo com a URL fornecida pelo responsável. Sem essa configuração, o programa mostra https://api.example.invalid, apenas um exemplo sem serviço real. Nenhum endereço de produção é distribuído neste repositório.
+O modo Local usa http://127.0.0.1:8787; inicie seu backend local separadamente. Para o modo remoto, configure FLUXO_API_BASE_URL no ambiente antes de abrir. Sem configuracao, o programa mostra somente https://api.example.invalid. Este repositorio nao distribui enderecos reais de producao. O backend deve implementar v2; aplicativos antigos precisam ser atualizados.
 
 ## Credenciais
 
-Nenhum token real é distribuído neste repositório. Obtenha a credencial com o responsável pela API. Informe o token original (não SHA-256) na interface e clique em Salvar credencial, ou importe um arquivo local. O token é protegido usando DPAPI CurrentUser e não pode ser compartilhado entre usuários Windows. Não publique arquivos de credencial nem dados de caixa.
+Nenhum token real e distribuido. Obtenha o token com o responsavel pela API. Informe o token original (nao o hash) pela interface e salve, ou importe um arquivo local. Credenciais sao protegidas por DPAPI CurrentUser. Nunca publique credenciais nem dados de caixa.
 
-Opcionalmente, configure FLUXO_DESKTOP_TOKEN_LOCAL e FLUXO_DESKTOP_TOKEN_PRODUCTION no ambiente do processo antes de abrir o programa. Essas variáveis são lidas na troca de ambiente. .env.example tem somente placeholders; o programa não carrega .env automaticamente. Não inserir tokens no código, README ou argumentos de linha de comando. Testes usam tokens fictícios, sem acesso à produção.
+Opcionalmente configure FLUXO_DESKTOP_TOKEN_LOCAL e FLUXO_DESKTOP_TOKEN_PRODUCTION no ambiente antes de executar. .env.example tem somente placeholders; o aplicativo nao carrega .env automaticamente. FLUXO_SIMULATOR_DATA_DIR permite escolher outro diretorio; o padrao e %LOCALAPPDATA%/FluxoCaixaSimulator, separado por ambiente.
 
-## Funcionalidades
+## Operacoes
 
-- Fechar caixa e enviar: persiste o lote local antes do POST.
-- Salvar sem enviar: mantém Pending e pausa envio automático.
-- Reenviar pendências: envia a fila com o token do ambiente atual.
-- Consultar dia na API: GET com intervalo inclusivo do mesmo dia.
-- Editar lançamento na API: selecione o dia original na tela; no diálogo escolha forma original, nova forma, data/hora e valor.
-- Excluir lançamento na API: selecione dia e forma, depois confirme.
+- Fechar e enviar: persiste UUIDs, versoes e chave de operacao antes do POST.
+- Salvar sem enviar: salva Pending e pausa envio automatico.
+- Reenviar pendencias: repete payload e chave originais.
+- Consultar dia: carrega o estado remoto sem renovar pendencias.
+- Editar/excluir: usa UUID e versao consultados antes do dialogo; conflito nao sobrescreve.
+- Revisar conflito / fila antiga: compara estado remoto e intencao local. Somente confirmacao explicita cria nova revisao com outra chave.
 
-Edição e exclusão são online. Sincronize pendências dos dias envolvidos primeiro. Após confirmação, o histórico local recebe RemoteChanged; consulte o servidor para ver o estado atual. O programa não transforma essas operações em retries automáticos. Um novo fechamento pode sobrescrever valores editados ou recriar registros excluídos.
-
-## Contrato da API
-
-Autenticação desktop: X-Desktop-Token. Não enviar simultaneamente Authorization.
-
-POST /api/fechamentos recebe array de 1 a 6 itens do mesmo dia, sem forma repetida. Cada item contém Data ISO-8601, FormaPagamento e Valor em reais (number JSON com até duas casas, não negativo). Formas: credito, debito, pix, dinheiro, vale refeicao e delivery.
-
-PUT /api/fechamentos/{dataAtual}/{formaAtual} recebe um objeto com todos os novos campos. A URL usa a chave original, mesmo quando data ou forma mudar. Retorna 404 se o original não existir; 409 se o destino estiver ocupado. DELETE na mesma URL não tem corpo; retorna 200 com Excluido true ou false quando a chave já estiver ausente. Codificar os segmentos, por exemplo vale%20refeicao.
-
-GET /api/fechamentos?dataInicio=YYYY-MM-DD&dataFim=YYYY-MM-DD retorna dias consolidados. Datas inclusivas. Limite padrão 30 dias com registros, até 90 usando limit=90.
-
-Dados e credenciais locais são separados por ambiente em %LOCALAPPDATA%/FluxoCaixaSimulator. FLUXO_SIMULATOR_DATA_DIR permite escolher outro diretório. O simulador usa arquivo JSON com escrita atômica para demonstrar a outbox; o sistema desktop real deve salvar fechamento e outbox na mesma transação do banco operacional.
+Filas antigas aparecem como NeedsReview. 409 pausa retries manuais e automaticos. O simulador usa arquivo com escrita atomica; a aplicacao operacional deve salvar fechamento e outbox na mesma transacao do banco local. Edicao e exclusao da interface sao online; as filas automaticas sao de lotes de fechamento.
 
 ## Testes
 
@@ -47,14 +35,12 @@ Dados e credenciais locais são separados por ambiente em %LOCALAPPDATA%/FluxoCa
 dotnet run --project FluxoCaixa.Tests -c Release
 ```
 
-Integração completa opcional, somente com servidor loopback e dados fictícios:
+Teste integrado opcional exclusivamente com backend loopback:
 
 ```powershell
-dotnet run --project FluxoCaixa.Tests -c Release -- --integration http://127.0.0.1:8787 CAMINHO_DO_ARQUIVO_TOKEN_LOCAL
+dotnet run --project FluxoCaixa.Tests -c Release -- --integration http://127.0.0.1:8787 CAMINHO_DO_TOKEN_LOCAL
 ```
 
-Os testes verificam persistência, retries, autenticação recusada, revisão concorrente, confirmação incompleta, bloqueio de edição com Pending e chamadas PUT/DELETE. O teste integrado também cria, move e exclui registros locais.
+Testes cobrem UUID/operacao persistidos, retries, conflito pausado, fila antiga, PUT/DELETE versionados, respostas antigas e confirmacao incompleta. O teste integrado tambem verifica conflito real, revisao explicita e tombstone. Tokens unitarios sao ficticios.
 
-## Estrutura
-
-FluxoCaixa.Core: contrato, persistência e transporte HTTP. FluxoCaixa.Simulator: interface e DPAPI. FluxoCaixa.Tests: testes executáveis sem dependências externas de teste.
+FluxoCaixa.Core contem contrato, persistencia e HTTP. FluxoCaixa.Simulator contem interface e DPAPI. FluxoCaixa.Tests e um executavel de testes sem framework externo.
