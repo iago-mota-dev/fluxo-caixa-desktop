@@ -1,4 +1,4 @@
-> **Tenant obrigatório:** configure `FLUXO_TENANT_ID` ou preencha Tenant e clique em Aplicar tenant. Todas as requisições incluem `X-Tenant-Id`. Veja [Tenants](TENANTS.md). Backend com tenant ainda aguarda ativação em produção.
+> **Tenant obrigatório:** configure `FLUXO_TENANT_ID` ou preencha Tenant e clique em Aplicar tenant. Todas as requisições incluem `X-Tenant-Id`. Veja [Tenants](TENANTS.md). Backend com tenant ativado em produção em 03/10/2026.
 
 # Fluxo de Caixa - simulador desktop
 

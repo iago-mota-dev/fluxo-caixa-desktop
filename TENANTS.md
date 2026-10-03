@@ -1,6 +1,6 @@
 # Tenants: integração obrigatória
 
-Esta funcionalidade está implementada e validada localmente. A ativação na API publicada depende da aplicação da migration 0006 e do deploy autorizado.
+Funcionalidade publicada em 03/10/2026. Migration 0006 aplicada no D1 remoto e isolamento verificado na API publicada.
 
 Todas as chamadas GET, POST, PUT e DELETE devem incluir o cabeçalho:
 
@@ -18,7 +18,7 @@ O ID original foi gerado uma única vez como hash SHA-256 de bytes aleatórios. 
 
 A migration versionada `0006_tenants.sql` cria o tenant original e atribui automaticamente a ele todos os fechamentos existentes, inclusive excluídos, auditorias e operações de sincronização. IDs, versões, valores e respostas históricas são preservados. Nenhuma edição manual dos registros é necessária.
 
-A migration deve preceder o deploy do Worker. Os clientes devem receber o ID antes da ativação: depois dela, requisições sem o cabeçalho serão recusadas. Inicialmente a migration foi aplicada apenas no D1 local.
+A migration deve preceder o deploy do Worker. Os clientes devem receber o ID antes da ativação: depois dela, requisições sem o cabeçalho serão recusadas. A migration foi validada localmente e posteriormente aplicada no D1 remoto, com autorização e backup. Todos os registros existentes foram preservados.
 
 ## Isolamento e sincronização
 
