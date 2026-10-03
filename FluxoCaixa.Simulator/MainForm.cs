@@ -138,7 +138,7 @@ public sealed class MainForm : Form
   using var dialog=new Form{Text=delete?"Excluir lancamento":"Editar lancamento",Width=460,Height=390,StartPosition=FormStartPosition.CenterParent,FormBorderStyle=FormBorderStyle.FixedDialog,MaximizeBox=false,MinimizeBox=false};
   var panel=new FlowLayoutPanel{Dock=DockStyle.Fill,Padding=new Padding(15),FlowDirection=FlowDirection.TopDown,WrapContents=false};dialog.Controls.Add(panel);
   panel.Controls.Add(new Label{Text=$"Dia original: {sourceDay}. Alteracao usa a versao consultada.",AutoSize=true});
-  var source=new ComboBox{DropDownStyle=ComboBoxStyle.DropDownList,Width=390};source.Items.AddRange(current.Select(p=>p.FormaPagamento).ToArray());source.SelectedIndex=0;panel.Controls.Add(source);
+  var source=new ComboBox{DropDownStyle=ComboBoxStyle.DropDownList,Width=390};source.Items.AddRange(current.Select(p=>$"{p.FormaPagamento} | {p.Valor:C} | v{p.Versao} | {p.Id[..8]}").ToArray());source.SelectedIndex=0;panel.Controls.Add(source);
   var destination=new ComboBox{DropDownStyle=ComboBoxStyle.DropDownList,Width=390};destination.Items.AddRange(Contrato.Formas);
   var newDate=new DateTimePicker{Format=DateTimePickerFormat.Custom,CustomFormat="dd/MM/yyyy HH:mm:ss",Width=390};
   var amount=new NumericUpDown{DecimalPlaces=2,Maximum=15011998757901.65m,ThousandsSeparator=true,Width=390};

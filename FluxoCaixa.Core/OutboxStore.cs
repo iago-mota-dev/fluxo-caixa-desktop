@@ -18,7 +18,7 @@ public sealed class OutboxStore
   { JsonSerializer.Serialize(stream, entries, options); stream.Flush(true); }
   if (File.Exists(path)) File.Replace(temp, path, path + ".bak"); else File.Move(temp, path);
  }
- public OutboxEntry[] Snapshot() { lock(gate) return Load().Select(e=>e.OperationId is null || e.Payload.Any(p=>!Guid.TryParse(p.Id,out _)) ? e with {Status="NeedsReview",RequiresAttention=true,LastError="Fila antiga sem versao. Consulte o servidor e revise antes de reenviar."} : e).OrderByDescending(x=>x.Day).ToArray(); }
+ public OutboxEntry[] Snapshot() { lock(gate) return Load().Select(e=>e.OperationId is null ? e with {Status="NeedsReview",RequiresAttention=true,LastError="Fila antiga sem versao. Consulte o servidor e revise antes de reenviar."} : e).OrderByDescending(x=>x.Day).ToArray(); }
  public Grupo[] Known(string day)
  {
   lock(gate){var file=path+".known.json";var days=File.Exists(file)?JsonSerializer.Deserialize<Dictionary<string,Grupo[]>>(File.ReadAllText(file))!:[];return days.GetValueOrDefault(day)??[];}
@@ -37,7 +37,7 @@ public sealed class OutboxStore
    var baseline=reviewed?Known(day):old is not null && old.Status!="RemoteChanged"?old.Payload:Known(day);
    if(!reviewed && old is not null && (old.OperationId is null || old.RequiresAttention))throw new InvalidOperationException("Revise o conflito/fila antiga antes de criar outra revisao.");
    var now=DateTimeOffset.UtcNow.ToString("yyyy-MM-dd'T'HH:mm:ss.fff'Z'");
-   var versioned=payload.Select(p=>{var known=baseline.FirstOrDefault(x=>x.FormaPagamento==p.FormaPagamento);return p with {Id=known?.Id is {Length:>0}?known.Id:Guid.NewGuid().ToString(),Versao=known?.Versao??0,AlteradoEmCliente=now};}).ToArray();
+   var versioned=payload.Select(p=>{var known=baseline.FirstOrDefault(x=>x.FormaPagamento==p.FormaPagamento);return p with {Id=known?.Id??"",Versao=known?.Versao??0,AlteradoEmCliente=now};}).ToArray();
    var entry=new OutboxEntry(day,(old?.Revision??0)+1,versioned,OperationId:Guid.NewGuid().ToString());
    list.RemoveAll(x=>x.Day==day); list.Add(entry); Write(list); return entry;
   }
@@ -61,7 +61,7 @@ public sealed class OutboxStore
    var old=list[index]; var now=DateTimeOffset.UtcNow;
    list[index]=old with {Status=success?"Sent":"Pending",Attempts=old.Attempts+1,
     LastError=error,RequiresAttention=attention,SentAt=success?now:null,NextAttempt=success?null:now+delay,
-    Payload=success && confirmed is not null?old.Payload.Select(p=>p with {Versao=confirmed.Single(r=>r.Id==p.Id).Versao}).ToArray():old.Payload};
+    Payload=success && confirmed is not null?old.Payload.Select(p=>p with {Id=confirmed.Single(r=>r.FormaPagamento==p.FormaPagamento).Id,Versao=confirmed.Single(r=>r.FormaPagamento==p.FormaPagamento).Versao}).ToArray():old.Payload};
    Write(list);
   }
  }

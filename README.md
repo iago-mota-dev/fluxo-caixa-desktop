@@ -1,6 +1,6 @@
 # Fluxo de Caixa - simulador desktop
 
-Aplicacao Windows Forms .NET 10 para fechamento com fila persistida, consulta, edicao e exclusao via API externa. Usa UUID permanente, controle de versao e idempotencia. Consulte [Contrato v2](CONTRATO_V2.md), incluindo migração, JSON de todas as rotas e conflitos.
+Aplicacao Windows Forms .NET 10 para fechamento com fila persistida, consulta, edicao e exclusao via API externa. O POST mantem Data, FormaPagamento e Valor, sem GUID/versao exigidos. O servidor gera a identidade. PUT/DELETE usam UUID permanente e controle de versao. Consulte [Contrato v2](CONTRATO_V2.md), incluindo migração, JSON de todas as rotas e conflitos.
 
 ## Executar
 
@@ -20,11 +20,11 @@ Opcionalmente configure FLUXO_DESKTOP_TOKEN_LOCAL e FLUXO_DESKTOP_TOKEN_PRODUCTI
 
 ## Operacoes
 
-- Fechar e enviar: persiste UUIDs, versoes e chave de operacao antes do POST.
+- Fechar e enviar: persiste payload original e chave opcional de operacao; guarda UUIDs/versoes devolvidos pelo servidor. Valores diferentes na mesma data/forma sao preservados separadamente e somados no total.
 - Salvar sem enviar: salva Pending e pausa envio automatico.
 - Reenviar pendencias: repete payload e chave originais.
 - Consultar dia: carrega o estado remoto sem renovar pendencias.
-- Editar/excluir: usa UUID e versao consultados antes do dialogo; conflito nao sobrescreve.
+- Editar/excluir: usa UUID e versao consultados antes do dialogo; conflito nao sobrescreve. A lista distingue registros pela forma, valor e ID.
 - Revisar conflito / fila antiga: compara estado remoto e intencao local. Somente confirmacao explicita cria nova revisao com outra chave.
 
 Filas antigas aparecem como NeedsReview. 409 pausa retries manuais e automaticos. O simulador usa arquivo com escrita atomica; a aplicacao operacional deve salvar fechamento e outbox na mesma transacao do banco local. Edicao e exclusao da interface sao online; as filas automaticas sao de lotes de fechamento.

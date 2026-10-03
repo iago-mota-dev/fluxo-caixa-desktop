@@ -24,7 +24,7 @@ public sealed class SyncService(HttpClient http, OutboxStore store, Uri baseUri,
     try
     {
      using var request=new HttpRequestMessage(HttpMethod.Post,new Uri(baseUri,"/api/fechamentos"));
-     request.Headers.Add("X-Desktop-Token",token); request.Headers.Add("Idempotency-Key",entry.OperationId); request.Content=JsonContent.Create(entry.Payload);
+     request.Headers.Add("X-Desktop-Token",token); request.Headers.Add("Idempotency-Key",entry.OperationId); request.Content=JsonContent.Create(entry.Payload.Select(p=>new {p.Data,p.FormaPagamento,p.Valor}).ToArray(),options:new JsonSerializerOptions());
      using var response=await http.SendAsync(request,cancellation);
      if(response.StatusCode!=HttpStatusCode.OK)
      {
@@ -38,7 +38,7 @@ public sealed class SyncService(HttpClient http, OutboxStore store, Uri baseUri,
      }
      var result=await response.Content.ReadFromJsonAsync<Confirmacao>(cancellation);
      if(result is null || !result.Sucesso || result.DataCaixa!=entry.Day || result.Quantidade!=entry.Payload.Length || result.FormasPagamento is null || result.FormasPagamento.Length!=entry.Payload.Length ||
-      !result.FormasPagamento.Select(x=>(x.FormaPagamento,x.Valor,x.Id,x.Versao)).SequenceEqual(entry.Payload.Select(x=>(x.FormaPagamento,x.Valor,x.Id,x.Versao+1))))
+      !result.FormasPagamento.Select(x=>(x.FormaPagamento,x.Valor)).SequenceEqual(entry.Payload.Select(x=>(x.FormaPagamento,x.Valor))) || result.FormasPagamento.Any(x=>!Guid.TryParse(x.Id,out _) || x.Versao<1))
       throw new InvalidDataException("Resposta 200 não confirmou o lote enviado.");
      store.UpdateResult(entry.Day,entry.Revision,true,null,false,TimeSpan.Zero,result.FormasPagamento); sent++;
     }
