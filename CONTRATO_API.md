@@ -23,7 +23,7 @@ Array de 1 a 6 formas unicas do mesmo dia. Formas: credito, debito, pix, dinheir
 - Mesma data/forma com valor diferente: cria outro UUID e preserva ambos os registros ativos.
 - O GET devolve ambos os lancamentos separadamente e Total soma os valores de todos os ativos. Nao deduplicar por forma no aplicativo.
 - POST nao edita ou exclui registros anteriores. Para corrigir um registro, usar PUT.
-- Uma exclusao existente da mesma data/forma bloqueia novas criacoes por POST original, com 409, para nao recriar silenciosamente dados excluidos por um envio atrasado. Repeticoes de operacoes ja confirmadas retornam a confirmacao anterior, sem recriar.
+- Uma exclusao anterior nao bloqueia novo POST. Uma nova operacao cria outro UUID ativo; o anterior permanece excluido no historico. Sem Idempotency-Key, cada POST e uma nova operacao, com deduplicacao apenas do conteudo ativo. Com chave explicita, um retry continua retornando a confirmacao anterior, sem recriar: use uma nova chave para uma nova operacao apos exclusao.
 - Todo lote e auditoria sao atomicos. Um item recusado desfaz o lote. O total do dia tambem deve respeitar o limite de centavos representavel com seguranca.
 
 ### Resposta do POST
